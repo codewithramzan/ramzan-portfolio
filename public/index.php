@@ -10,12 +10,11 @@ date_default_timezone_set($config['timezone']);
 
 define('APP_DEBUG', $config['debug']);
 
-require BASE_PATH . '/app/core/Database.php';
-require BASE_PATH . '/app/core/Model.php';
-require BASE_PATH . '/app/core/Controller.php';
-require BASE_PATH . '/app/core/Router.php';
+require BASE_PATH . '/app/core/Autoloader.php';
+require BASE_PATH .
+    '/app/helpers/helpers.php';
 
-require BASE_PATH . '/app/controllers/HomeController.php';
+Autoloader::register();
 
 $router = new Router();
 
@@ -31,11 +30,17 @@ try {
 } catch (Throwable $e) {
 
     if (APP_DEBUG) {
+
         http_response_code(500);
 
         echo '<h1>Application Error</h1>';
+
         echo '<pre>';
-        echo htmlspecialchars($e->getMessage());
+        echo htmlspecialchars(
+            $e->getMessage(),
+            ENT_QUOTES,
+            'UTF-8'
+        );
         echo '</pre>';
 
     } else {
