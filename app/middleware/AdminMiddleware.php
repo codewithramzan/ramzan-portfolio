@@ -4,10 +4,27 @@ class AdminMiddleware
 {
     public static function handle(): void
     {
-        if (!Auth::check()) {
+        /*
+        |--------------------------------------------------------------------------
+        | Authentication Check
+        |--------------------------------------------------------------------------
+        */
+
+        if (Auth::guest()) {
+
+            Session::flash(
+                'error',
+                'Please login as an administrator.'
+            );
 
             Response::redirect('/admin/login');
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Authorization Check
+        |--------------------------------------------------------------------------
+        */
 
         if (!Auth::isAdmin()) {
 

@@ -4,10 +4,19 @@ class Session
 {
     public static function start(): void
     {
-        if (session_status() === PHP_SESSION_NONE) {
-
-            session_start();
+        if (session_status() !== PHP_SESSION_NONE) {
+            return;
         }
+
+        session_set_cookie_params([
+            'lifetime' => 0,
+            'path' => '/',
+            'secure' => !APP_DEBUG,
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ]);
+
+        session_start();
     }
 
     public static function set(

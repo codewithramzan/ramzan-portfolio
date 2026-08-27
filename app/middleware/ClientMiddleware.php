@@ -4,10 +4,27 @@ class ClientMiddleware
 {
     public static function handle(): void
     {
-        if (!Auth::check()) {
+        /*
+        |--------------------------------------------------------------------------
+        | Authentication Check
+        |--------------------------------------------------------------------------
+        */
+
+        if (Auth::guest()) {
+
+            Session::flash(
+                'error',
+                'Please login to continue.'
+            );
 
             Response::redirect('/client/login');
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Authorization Check
+        |--------------------------------------------------------------------------
+        */
 
         if (!Auth::isClient()) {
 
