@@ -3,12 +3,13 @@
 class AuthController extends Controller
 {
     private User $userModel;
-
+    private LoginAttempt $loginAttemptModel;
     public function __construct()
     {
         $this->userModel = new User();
-    }
 
+        $this->loginAttemptModel = new LoginAttempt();
+    }
     public function adminLogin(): void
     {
         if (Auth::check()) {
@@ -73,6 +74,7 @@ class AuthController extends Controller
 
     private function authenticate(string $requiredRole): void
     {
+        $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
         if (!Csrf::verify(
             Request::input('_csrf')
         )) {
@@ -88,9 +90,10 @@ class AuthController extends Controller
                     : '/client/login'
             );
         }
-
-        $email = trim(
-            (string) Request::input('email')
+        $email = strtolower(
+            trim(
+                (string) Request::input('email')
+            )
         );
 
         $password = (string) Request::input(
@@ -127,9 +130,34 @@ class AuthController extends Controller
                     : '/client/login'
             );
         }
+                /*
+        |--------------------------------------------------------------------------
+        | Login Attempt Protection
+        |--------------------------------------------------------------------------
+        */
 
-        $user = $this->userModel
-            ->findByEmail($email);
+        if (
+            $this->loginAttemptModel->isBlocked(
+                $email,
+                $ipAddress,
+                $requiredRole
+            )
+        ) {
+
+            Session::flash(
+                'error',
+                'Too many failed login attempts. Please try again later.'
+            );
+
+            Response::redirect(
+                $requiredRole === 'admin'
+                    ? '/admin/login'
+                    : '/client/login'
+            );
+        }
+
+            $user = $this->userModel
+                ->findByEmail($email);
 
         if (
             !$user ||
@@ -138,6 +166,12 @@ class AuthController extends Controller
                 $user['password']
             )
         ) {
+
+            $this->loginAttemptModel->record(
+                $email,
+                $ipAddress,
+                $requiredRole
+            );
 
             Session::flash(
                 'error',
@@ -150,7 +184,6 @@ class AuthController extends Controller
                     : '/client/login'
             );
         }
-
         if ($user['status'] !== 'active') {
 
             Session::flash(
@@ -164,8 +197,13 @@ class AuthController extends Controller
                     : '/client/login'
             );
         }
-
         if ($user['role_name'] !== $requiredRole) {
+
+            $this->loginAttemptModel->record(
+                $email,
+                $ipAddress,
+                $requiredRole
+            );
 
             Session::flash(
                 'error',
@@ -181,10 +219,15 @@ class AuthController extends Controller
 
         Auth::login($user);
 
+        $this->loginAttemptModel->clear(
+            $email,
+            $ipAddress,
+            $requiredRole
+        );
+
         $this->userModel->updateLastLogin(
             (int) $user['id']
         );
-
         if ($requiredRole === 'admin') {
             Response::redirect('/admin/dashboard');
         }

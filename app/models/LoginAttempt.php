@@ -1,11 +1,66 @@
 <?php
 
+declare(strict_types=1);
+
 class LoginAttempt extends Model
 {
+    /*
+    |--------------------------------------------------------------------------
+    | Configuration
+    |--------------------------------------------------------------------------
+    */
+
+    private const MAX_ATTEMPTS = 5;
+
+    private const WINDOW_MINUTES = 15;
+
+
+    /**
+     * Determine whether login attempts are currently blocked.
+     *
+     * We check BOTH:
+     *
+     * 1. Email + IP combination
+     * 2. IP address
+     *
+     * This prevents a user from bypassing the protection simply by
+     * changing the email address repeatedly.
+     */
+    public function isBlocked(
+        string $email,
+        string $ipAddress,
+        string $role
+    ): bool {
+
+        $emailAttempts = $this->countRecentAttempts(
+            $email,
+            $ipAddress,
+            $role,
+            true
+        );
+
+        if ($emailAttempts >= self::MAX_ATTEMPTS) {
+            return true;
+        }
+
+        $ipAttempts = $this->countRecentAttempts(
+            $email,
+            $ipAddress,
+            $role,
+            false
+        );
+
+        return $ipAttempts >= self::MAX_ATTEMPTS;
+    }
+
+
+    /**
+     * Record a failed login attempt.
+     */
     public function record(
         string $email,
-        string $ip,
-        bool $successful
+        string $ipAddress,
+        string $role
     ): void {
 
         $this->query(
@@ -13,41 +68,105 @@ class LoginAttempt extends Model
             (
                 email,
                 ip_address,
-                successful
+                role,
+                attempted_at
             )
             VALUES
             (
                 :email,
-                :ip,
-                :successful
+                :ip_address,
+                :role,
+                NOW()
             )",
             [
                 'email' => $email,
-                'ip' => $ip,
-                'successful' => $successful ? 1 : 0
+                'ip_address' => $ipAddress,
+                'role' => $role
             ]
         );
     }
 
-    public function recentFailures(
-        string $email,
-        string $ip
-    ): int {
 
-        $result = $this->fetch(
-            "SELECT COUNT(*) AS total
-             FROM login_attempts
+    /**
+     * Clear previous failed attempts after successful login.
+     */
+    public function clear(
+        string $email,
+        string $ipAddress,
+        string $role
+    ): void {
+
+        $this->query(
+            "DELETE FROM login_attempts
              WHERE email = :email
-             AND ip_address = :ip
-             AND successful = 0
-             AND attempted_at >=
-                 DATE_SUB(NOW(), INTERVAL 15 MINUTE)",
+             AND ip_address = :ip_address
+             AND role = :role",
             [
                 'email' => $email,
-                'ip' => $ip
+                'ip_address' => $ipAddress,
+                'role' => $role
             ]
         );
+    }
 
-        return (int) ($result['total'] ?? 0);
+
+    /**
+     * Count recent attempts.
+     *
+     * When $matchEmail is true:
+     *     email + IP + role are checked.
+     *
+     * When false:
+     *     only IP + role are checked.
+     */
+    private function countRecentAttempts(
+        string $email,
+        string $ipAddress,
+        string $role,
+        bool $matchEmail
+    ): int {
+
+        if ($matchEmail) {
+
+            $result = $this->fetch(
+                "SELECT COUNT(*) AS total
+                 FROM login_attempts
+                 WHERE email = :email
+                 AND ip_address = :ip_address
+                 AND role = :role
+                 AND attempted_at >= (
+                     NOW() - INTERVAL "
+                     . self::WINDOW_MINUTES .
+                     " MINUTE
+                 )",
+                [
+                    'email' => $email,
+                    'ip_address' => $ipAddress,
+                    'role' => $role
+                ]
+            );
+
+        } else {
+
+            $result = $this->fetch(
+                "SELECT COUNT(*) AS total
+                 FROM login_attempts
+                 WHERE ip_address = :ip_address
+                 AND role = :role
+                 AND attempted_at >= (
+                     NOW() - INTERVAL "
+                     . self::WINDOW_MINUTES .
+                     " MINUTE
+                 )",
+                [
+                    'ip_address' => $ipAddress,
+                    'role' => $role
+                ]
+            );
+        }
+
+        return (int) (
+            $result['total'] ?? 0
+        );
     }
 }
